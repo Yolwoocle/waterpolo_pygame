@@ -240,10 +240,10 @@ class Actor(Object):
         self.friction = Constants.DEFAULT_FRICTION
         self._forces: List[Vec3] = []
         
-        self.gravity_force = Vec3(0, 0, -6.674 * 300)
+        self.gravity_force = Vec3(0, 0, -6.674 * 1000) * 0
         
-        self.density = 1 # 1.0 represents tensity of water
-        self.buoyancy_force = Vec3()
+        # self.density = 1 # 1.0 represents tensity of water
+        # self.buoyancy_force = Vec3()
         
         self.renderer = ImageRenderer()
     
@@ -251,14 +251,16 @@ class Actor(Object):
         self.apply_force(self.gravity_force)
         
         # Buoyancy on water
-        if self.pos.z <= 0:
-            self.buoyancy_force = -self.gravity_force / self.density
-            self.apply_force(self.buoyancy_force)
+        # if self.pos.z <= 0:
+        #     self.buoyancy_force = -self.gravity_force / self.density
+        #     self.apply_force(self.buoyancy_force)
         
         self.apply_force(-self.vel * self.friction)
         self.acc = Vec3()
         for f in self._forces:
             self.acc += f
+            
+        print(self._forces)
         
         self._forces.clear()
         self.vel += self.acc * dt
@@ -298,7 +300,18 @@ class Collision:
 
         dist_sq = (a_pos.x - b_pos.x)**2 + (a_pos.y - b_pos.y)**2
         return dist_sq <= (a.radius + b.radius)**2
+    
+    def is_touching_sphere_border(self, sph, border, sph_pos):
+        sph_pos = to_vec2(sph_pos)
+        sph_a = sph_pos - Vec2(sph.radius, sph.radius)
+        sph_b = sph_pos + Vec2(sph.radius, sph.radius)
+        
+        in_bounds = border.a.x <= sph_a.x <= border.b.x \
+            and border.a.y <= sph_a.y <= border.b.y \
+            and border.a.x <= sph_b.x <= border.b.x \
+            and border.a.y <= sph_b.y <= border.b.y
 
+        return not in_bounds
 
 class SphereCollision(Collision):
     def __init__(self, radius: Number) -> None:
@@ -308,15 +321,21 @@ class SphereCollision(Collision):
     def is_touching(self, other, self_pos, other_pos):
         if isinstance(other, SphereCollision):
             return self.is_touching_sphere_sphere(self, other, self_pos, other_pos)
+        if isinstance(other, SphereCollision):
+            return self.is_touching_sphere_sphere(self, other, self_pos)
         
 class BorderCollision(Collision):
     """
     Collision that represents the border of the play area. 
-    Is defined by a rectangle, extensing infinitely in the z directoon. 
+    Is defined by a rectangle, extending infinitely in the z direction, and infinitely outwards. 
     """
     def __init__(self, a:Vec, b:Vec):
         self.a = to_vec3(a)
         self.b = to_vec3(b)
+    
+    def is_touching(self, other, self_pos, other_pos):
+        if isinstance(other, SphereCollision):
+            return self.is_touching_sphere_border(other, self, other_pos)
         
 
 
@@ -363,8 +382,6 @@ class Player(CollidableActor):
             "dive": pg.K_LSHIFT,
         })
         
-        self.density = 1.0
-        
         self.swimming_force = Constants.DEFAULT_MOVEMENT_FORCE
         self.diving_force = Constants.DEFAULT_MOVEMENT_FORCE * 1.5
         self.current_force = self.swimming_force
@@ -390,7 +407,7 @@ class Player(CollidableActor):
         # pg.draw.circle(screen, (0,80,0, 125), to_vec2(self.pos), self.collision.radius)
         pos = Vec3(round(self.pos.x,1), round(self.pos.y,1), round(self.pos.z,1))
         
-        # draw_text(screen, str(self.pos), to_vec2(self.pos) + Vec2(0, 40))
+        draw_text(screen, str(self.pos), to_vec2(self.pos) + Vec2(0, 40))
         
 
     def do_movement(self, dt) -> None:
@@ -408,10 +425,8 @@ class Player(CollidableActor):
         
         if self.is_diving:
             self.current_force = self.diving_force
-            self.density = 1.0
         else:
             self.current_force = self.swimming_force
-            self.density = 0.05
             
         # if is_key_down(pg.K_a):
         #     self.apply_force(Vec3(0, 0, 3000))
@@ -437,9 +452,12 @@ class Ball(CollidableActor):
         
     def draw(self, screen) -> None:
         pg.draw.circle(screen, Colors.GREEN, to_vec2(self.pos), self.radius)
+        draw_text(screen, self.pos)
     
     def on_collision(self, other, dt):
-        self.apply_force(self.kick_multiplier * other.vel.length() * (1/dt) * -self.get_nomalized_vector_to(other))
+        force = (self.kick_multiplier * other.vel.length() * (1/dt) * -self.get_nomalized_vector_to(other))
+        self.apply_force(force)
+
 
 
 class Game:
